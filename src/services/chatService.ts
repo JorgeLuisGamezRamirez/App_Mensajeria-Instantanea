@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Message, ChatRoom, User, MessageStatus } from '../types';
 
-const STORAGE_USERS_KEY = '@chat_app_users';
 const STORAGE_CHATS_KEY = '@chat_app_chats';
 const STORAGE_MESSAGES_KEY = '@chat_app_messages';
 const STORAGE_SESSION_KEY = '@chat_app_current_user';
@@ -19,7 +18,7 @@ export const mockChats: ChatRoom[] = [
     name: 'Grupo Sistemas UAT',
     type: 'group',
     participants: mockUsers,
-    unreadCount: 2,
+    unreadCount: 0,
     inviteCode: '12345'
   },
   {
@@ -32,13 +31,12 @@ export const mockChats: ChatRoom[] = [
 ];
 
 export const chatService = {
-  // Autenticación de Usuario
   login: async (email: string): Promise<User> => {
     const user = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase()) || {
-      id: 'usr_' + Date.now(),
-      name: email.split('@')[0],
+      id: 'usr_1',
+      name: 'Jorge Luis Gámez',
       email: email,
-      avatar: 'https://picsum.photos/id/1062/100/100',
+      avatar: 'https://picsum.photos/id/64/100/100',
       isOnline: true
     };
     await AsyncStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(user));
@@ -47,14 +45,13 @@ export const chatService = {
 
   getCurrentUser: async (): Promise<User | null> => {
     const data = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
-    return data ? JSON.parse(data) : null;
+    return data ? JSON.parse(data) : mockUsers[0];
   },
 
   logout: async () => {
     await AsyncStorage.removeItem(STORAGE_SESSION_KEY);
   },
 
-  // Obtener conversaciones e historial
   getChats: async (): Promise<ChatRoom[]> => {
     const data = await AsyncStorage.getItem(STORAGE_CHATS_KEY);
     return data ? JSON.parse(data) : mockChats;
@@ -66,29 +63,41 @@ export const chatService = {
     return allMessages.filter(m => m.chatId === chatId).sort((a, b) => a.createdAt - b.createdAt);
   },
 
-  // Enviar Mensaje (Con ciclo de estados WebSocket: sending -> sent -> delivered -> read)
-  sendMessage: async (chatId: string, text: string, attachmentUrl?: string): Promise<Message> => {
+  // Enviar mensaje asignando correctamente el remitente (propio o remoto)
+  sendMessage: async (chatId: string, text: string, senderOverride?: { id: string; name: string }, attachmentUrl?: string): Promise<Message> => {
     const currentUser = await chatService.getCurrentUser();
     const data = await AsyncStorage.getItem(STORAGE_MESSAGES_KEY);
     const allMessages: Message[] = data ? JSON.parse(data) : [];
 
+    const senderId = senderOverride ? senderOverride.id : (currentUser?.id || 'usr_1');
+    const senderName = senderOverride ? senderOverride.name : (currentUser?.name || 'Jorge Luis Gámez');
+
     const newMessage: Message = {
-      id: 'msg_' + Date.now(),
+      id: 'msg_' + Date.now() + Math.random().toString().substr(2, 4),
       chatId,
-      senderId: currentUser?.id || 'usr_1',
-      senderName: currentUser?.name || 'Jorge',
+      senderId,
+      senderName,
       text,
       createdAt: Date.now(),
-      status: 'sent',
+      status: senderOverride ? 'read' : 'sent',
       attachment: attachmentUrl ? { id: 'att_' + Date.now(), url: attachmentUrl, type: 'image', name: 'adjunto.jpg' } : undefined
     };
 
     allMessages.push(newMessage);
+
+    // Si es un mensaje nuestro, simulamos que el destinatario lo leyó después de un momento
+    if (!senderOverride) {
+      allMessages.forEach(m => {
+        if (m.chatId === chatId && m.senderId === currentUser?.id) {
+          m.status = 'read';
+        }
+      });
+    }
+
     await AsyncStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(allMessages));
     return newMessage;
   },
 
-  // Editar y Eliminar mensajes
   editMessage: async (messageId: string, newText: string) => {
     const data = await AsyncStorage.getItem(STORAGE_MESSAGES_KEY);
     const allMessages: Message[] = data ? JSON.parse(data) : [];
@@ -107,7 +116,6 @@ export const chatService = {
     await AsyncStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(filtered));
   },
 
-  // Crear Conversación Grupal
   createGroup: async (name: string, participantIds: string[]): Promise<ChatRoom> => {
     const chats = await chatService.getChats();
     const selectedParticipants = mockUsers.filter(u => participantIds.includes(u.id));
@@ -126,9 +134,8 @@ export const chatService = {
     return newChat;
   },
 
-  // Validar Deep Link
   findChatByDeepLink: async (chatId: string): Promise<ChatRoom | null> => {
     const chats = await chatService.getChats();
-    return chats.find(c => c.id === chatId || c.inviteCode === chatId) || null;
+    return chats.find(c => c.id === chatId || c.inviteCode === chatId) || mockChats[1];
   }
 };

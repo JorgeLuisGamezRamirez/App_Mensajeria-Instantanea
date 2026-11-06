@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Image, Share, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -47,19 +47,24 @@ export const ChatScreen = ({ route, navigation }: Props) => {
     const textToSend = inputText;
     setInputText('');
     
-    // Simular envío de mensaje y actualizar checks (enviado -> entregado -> leído)
-    const newMsg = await chatService.sendMessage(chatId, textToSend, attachmentUrl);
-    loadChatData();
+    // 1. Guardar mensaje enviado por MÍ
+    await chatService.sendMessage(chatId, textToSend, undefined, attachmentUrl);
+    await loadChatData();
 
-    // Simular respuesta e indicador "Escribiendo..." del otro participante
+    // 2. Simular respuesta en tiempo real del OTRO usuario (Ariel Perea)
+    const otherUser = {
+      id: chatInfo?.id === 'chat_direct_2' ? 'usr_2' : 'usr_3',
+      name: chatInfo?.name || 'Ariel Perea'
+    };
+
     setTimeout(() => {
       setIsTyping(true);
       setTimeout(async () => {
         setIsTyping(false);
-        await chatService.sendMessage(chatId, '¡Mensaje recibido en tiempo real! 👍');
-        loadChatData();
+        await chatService.sendMessage(chatId, '¡Mensaje recibido en tiempo real! 👍', otherUser);
+        await loadChatData();
       }, 1500);
-    }, 1000);
+    }, 800);
   };
 
   const handleShareDeepLink = async () => {
@@ -96,7 +101,7 @@ export const ChatScreen = ({ route, navigation }: Props) => {
           <Text style={styles.backBtn}>← Volver</Text>
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>{chatInfo?.name || 'Chat'}</Text>
+          <Text style={styles.headerTitle}>{chatInfo?.name || 'Ariel Perea'}</Text>
           <Text style={styles.headerSub}>
             {isTyping ? '✍️ escribiendo...' : '🟢 WebSocket Conectado'}
           </Text>
@@ -110,6 +115,7 @@ export const ChatScreen = ({ route, navigation }: Props) => {
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingVertical: 10 }}
         renderItem={({ item }) => {
           const isMine = item.senderId === currentUser?.id;
 
@@ -118,7 +124,9 @@ export const ChatScreen = ({ route, navigation }: Props) => {
               onLongPress={() => isMine && handleDeleteMessage(item.id)} 
               style={[styles.msgBox, isMine ? styles.msgMine : styles.msgOther]}
             >
-              <Text style={styles.senderName}>{isMine ? 'Tú' : item.senderName}</Text>
+              <Text style={[styles.senderName, isMine ? styles.senderMine : styles.senderOther]}>
+                {isMine ? 'Tú' : item.senderName}
+              </Text>
               
               {item.attachment ? (
                 <Image source={{ uri: item.attachment.url }} style={styles.msgAttachmentImg} />
@@ -141,7 +149,7 @@ export const ChatScreen = ({ route, navigation }: Props) => {
         }}
       />
 
-      {/* Barra de Entrada con Soporte para Adjuntos */}
+      {/* Barra de Entrada */}
       <View style={styles.inputBar}>
         <TouchableOpacity style={styles.attachBtn} onPress={() => handleSend(SAMPLE_ATTACHMENTS[0])}>
           <Text style={{ fontSize: 18 }}>📷</Text>
@@ -173,7 +181,9 @@ const styles = StyleSheet.create({
   msgBox: { padding: 12, borderRadius: 14, marginVertical: 4, marginHorizontal: 12, maxWidth: '80%' },
   msgMine: { alignSelf: 'flex-end', backgroundColor: '#0284C7' },
   msgOther: { alignSelf: 'flex-start', backgroundColor: '#334155' },
-  senderName: { fontSize: 10, fontWeight: 'bold', color: '#E2E8F0', marginBottom: 2 },
+  senderName: { fontSize: 11, fontWeight: 'bold', marginBottom: 2 },
+  senderMine: { color: '#BAE6FD' },
+  senderOther: { color: '#38BDF8' },
   msgText: { color: '#FFF', fontSize: 14 },
   msgAttachmentImg: { width: 180, height: 120, borderRadius: 8, marginVertical: 4 },
   msgMeta: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 4 },
